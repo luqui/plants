@@ -1,8 +1,10 @@
 module Plant where
 
+import Prelude hiding (or)
 import qualified Graphics.DrawingCombinators as Draw
 import qualified Graphics.UI.SDL as SDL
-import Data.Monoid (Monoid(..))
+import Data.Monoid (Monoid(..), First(..))
+import Control.Monad.Instances ()
 
 type Drawing = Draw.Draw ()
 
@@ -10,14 +12,68 @@ data Plant
     = PBranch Plant
     | PJunction Plant Plant
     | PLeaf
-    | PStub (Pattern Plant)
+    | PStub (PlantZ -> Maybe Plant)
 
 data DPlant
     = DPBranch
     | DPJunctionL Plant
     | DPJunctionR Plant
 
-type Pattern a = [DPlant] -> Maybe a
+type PlantZ = (Plant, [DPlant])
+type Motion = PlantZ -> Maybe PlantZ
+
+or :: Maybe a -> Maybe a -> Maybe a
+or (Just x) _ = Just x
+or Nothing  y = y
+
+choice = foldr or Nothing
+
+zUp :: Motion
+zUp (p, DPBranch:cs) = Just (PBranch p, cs)
+zUp (p, DPJunctionL p':cs) = Just (PJunction p p', cs)
+zUp (p, DPJunctionR p':cs) = Just (PJunction p' p, cs)
+zUp (p, []) = Nothing
+
+zUpBranch :: Motion
+zUpBranch (p, DPBranch:cs) = Just (PBranch p, cs)
+zUpBranch _ = Nothing
+
+zUpJunctionL :: Motion
+zUpJunctionL (p, DPJunctionL p':cs) = Just (PJunction p p', cs)
+zUpJunctionL _ = Nothing
+
+zUpJunctionR :: Motion
+zUpJunctionR (p, DPJunctionR p':cs) = Just (PJunction p' p, cs)
+zUpJunctionR _ = Nothing
+
+zDownBranch :: Motion
+zDownBranch (PBranch p, cs) = Just (p, DPBranch : cs)
+zDownBranch _ = Nothing
+
+zDownJunctionL :: Motion
+zDownJunctionL (PJunction a b, cs) = Just (a, DPJunctionL b : cs)
+zDownJunctionL _ = Nothing
+
+zDownJunctionR :: Motion
+zDownJunctionR (PJunction a b, cs) = Just (b, DPJunctionR a : cs)
+zDownJunctionR _ = Nothing
+
+zStub :: PlantZ -> Maybe ()
+zStub (PStub _, cs) = Just ()
+zStub _ = Nothing
+
+zLeaf :: PlantZ -> Maybe ()
+zLeaf (PLeaf, cs) = Just ()
+zLeaf _ = Nothing
+
+zRoot :: PlantZ -> Maybe ()
+zRoot (_, []) = Just ()
+zRoot _ = Nothing
+
+infixl 0 $>
+($>) :: (Functor f) => f b -> a -> f a
+f $> x = fmap (const x) f
+
 
 step :: Plant -> Plant
 step = go []
@@ -25,8 +81,8 @@ step = go []
     go cx (PBranch p) = PBranch (go (DPBranch : cx) p)
     go cx (PJunction p q) = PJunction (go (DPJunctionL q : cx) p) (go (DPJunctionR p : cx) q)
     go _ PLeaf = PLeaf
-    go cx (PStub pat) | Just x <- pat cx = x
-                      | otherwise        = PStub pat
+    go cx self@(PStub pat) | Just x <- pat (self,cx) = x
+                           | otherwise               = self
 
 render :: Plant -> Drawing
 render (PBranch p)     = Draw.line (0,0) (0,1) `mappend` Draw.translate (0,1) (render p)
@@ -38,7 +94,7 @@ deg2rad deg = pi / 180 * deg
 
 
 viewport :: Drawing -> Drawing
-viewport = Draw.translate (0,-1) . Draw.scale 0.5 0.5
+viewport = Draw.translate (0,-1) . Draw.scale 0.25 0.25
 
 drawDNA :: Plant -> IO ()
 drawDNA tree = do
