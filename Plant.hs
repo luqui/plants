@@ -1,11 +1,8 @@
 module Plant where
 
 import qualified Graphics.DrawingCombinators as Draw
-import Graphics.DrawingCombinators (Vec2)
 import qualified Graphics.UI.SDL as SDL
 import Data.Monoid (Monoid(..))
-import Control.Monad (when)
-import System.IO
 
 type Drawing = Draw.Draw ()
 
@@ -27,7 +24,7 @@ step = go []
     where
     go cx (PBranch p) = PBranch (go (DPBranch : cx) p)
     go cx (PJunction p q) = PJunction (go (DPJunctionL q : cx) p) (go (DPJunctionR p : cx) q)
-    go cx PLeaf = PLeaf
+    go _ PLeaf = PLeaf
     go cx (PStub pat) | Just x <- pat cx = x
                       | otherwise        = PStub pat
 
@@ -35,7 +32,7 @@ render :: Plant -> Drawing
 render (PBranch p)     = Draw.line (0,0) (0,1) `mappend` Draw.translate (0,1) (render p)
 render (PJunction p q) = Draw.rotate (-deg2rad 20) (render p) `mappend` Draw.rotate (deg2rad 20) (render q)
 render PLeaf           = Draw.color (0,1,0,1) . Draw.scale 0.2 0.2 $ Draw.circle
-render (PStub pat)     = Draw.color (1,0.5,0,1) . Draw.scale 0.2 0.2 $ Draw.circle
+render (PStub _)       = Draw.color (1,0.5,0,1) . Draw.scale 0.2 0.2 $ Draw.circle
 
 deg2rad deg = pi / 180 * deg
 
